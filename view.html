@@ -1,0 +1,70 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>リアルタイム閲覧 (view.html)</title>
+</head>
+<body>
+    <h1>データ一覧 (view.html)</h1>
+    <p>絞り込み検索: <input type="text" id="filterInput" placeholder="名称やURLなどで検索..." style="width: 300px; padding: 5px;"></p>
+
+    <table border="1" id="viewTable" cellpadding="8" style="border-collapse: collapse; width: 100%;">
+        <thead>
+            <tr style="background-color: #eee;">
+                <th>名称</th>
+                <th>種類</th>
+                <th>識別番号</th>
+                <th>数値1(DC,R,V)</th>
+                <th>数値2(AC,F,A)</th>
+                <th>数値3(その他)</th>
+                <th>個数</th>
+                <th>備考</th>
+                <th>データシート</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+
+    <script>
+        function loadAndRender() {
+            const data = JSON.parse(localStorage.getItem('shared_csv_data')) || [];
+            const keyword = document.getElementById('filterInput').value.toLowerCase();
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = "";
+
+            data.forEach(row => {
+                // 検索フィルタ
+                if (keyword && !row.some(cell => String(cell).toLowerCase().includes(keyword))) return;
+
+                const tr = document.createElement('tr');
+                row.forEach((cell, colIndex) => {
+                    const td = document.createElement('td');
+
+                    // データシート列（インデックス8）でURLが含まれる場合の処理
+                    if (colIndex === 8 && (String(cell).startsWith('http') || String(cell).startsWith('https'))) {
+                        const a = document.createElement('a');
+                        a.href = cell;
+                        a.target = "_blank"; // 別タブで開く
+                        a.rel = "noopener noreferrer";
+                        a.textContent = "🔗 リンクを開く";
+                        // URLが長すぎる場合に備えてボタンのような見た目にする場合はここを調整
+                        td.appendChild(a);
+                    } else {
+                        td.textContent = cell;
+                    }
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 別タブ(enter.html)の更新を検知
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'shared_csv_data') loadAndRender();
+        });
+
+        document.getElementById('filterInput').oninput = loadAndRender;
+        window.onload = loadAndRender;
+    </script>
+</body>
+</html>
