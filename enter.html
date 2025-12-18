@@ -1,38 +1,43 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>データ入力 (enter.html)</title>
+    <title>CSV編集・読込 (enter.html)</title>
 </head>
 <body>
     <h1>データ入力・編集 (enter.html)</h1>
-    <p><a href="view.html" target="_blank">→ 閲覧用画面 (view.html) を開く</a></p>
+    
+    <p>
+        <a href="view.html" target="_blank">→ 閲覧用画面 (view.html) を開く</a>
+    </p>
+
+    <fieldset style="margin-bottom: 20px; padding: 10px;">
+        <legend>CSVファイルの読み込み</legend>
+        <input type="file" id="csvFileInput" accept=".csv">
+        <button type="button" id="appendCsvBtn">末尾に継ぎ足す</button>
+        <button type="button" id="replaceCsvBtn">現在のデータを消して入れ替える</button>
+        <p><small>※1行目はヘッダーとして読み飛ばされます。</small></p>
+    </fieldset>
 
     <button type="button" id="addRowBtn">＋ 新しい行を追加</button>
-    <button type="button" id="downloadBtn">CSVとして書き出し</button>
+    <button type="button" id="downloadBtn">現在の内容をCSV出力</button>
     <button type="button" id="resetAllBtn" style="color: red; margin-left: 20px;">全消去</button>
 
     <table border="1" id="listTable" cellpadding="5" style="border-collapse: collapse; width: 100%; margin-top: 10px;">
         <thead>
             <tr style="background-color: #f9f9f9;">
-                <th>名称</th>
-                <th>種類</th>
-                <th>識別番号</th>
-                <th>数値1(DC,R,V)</th>
-                <th>数値2(AC,F,A)</th>
-                <th>数値3(その他)</th>
-                <th>個数</th>
-                <th>備考</th>
-                <th>データシート (外部URL)</th>
-                <th>操作</th>
+                <th>名称</th><th>種類</th><th>識別番号</th><th>数値1</th><th>数値2</th><th>数値3</th><th>個数</th><th>備考</th><th>データシート (URL)</th><th>操作</th>
             </tr>
         </thead>
         <tbody></tbody>
     </table>
 
     <script>
+        // データの初期化（保存があれば読み込み、なければ空行1つ）
         let allData = JSON.parse(localStorage.getItem('shared_csv_data')) || [Array(9).fill("")];
+        const STORAGE_KEY = 'shared_csv_data';
 
+        // --- 1. テーブルの描画機能 ---
         function renderTable() {
             const tbody = document.querySelector('#listTable tbody');
             tbody.innerHTML = "";
@@ -40,12 +45,12 @@
                 const tr = document.createElement('tr');
                 row.forEach((cellValue, colIndex) => {
                     const td = document.createElement('td');
-
+                    
                     if (colIndex === 8) {
-                        // データシート列: URL入力用テキストボックス
+                        // データシート列: URL入力用ボックス
                         const input = document.createElement('input');
                         input.type = "url";
-                        input.value = cellValue;
+                        input.value = cellValue || "";
                         input.placeholder = "https://...";
                         input.style.width = "95%";
                         input.onblur = () => {
@@ -54,9 +59,9 @@
                         };
                         td.appendChild(input);
                     } else {
-                        // その他の列: 直接編集
+                        // その他: 直接編集
                         td.contentEditable = true;
-                        td.textContent = cellValue;
+                        td.textContent = cellValue || "";
                         td.onblur = () => {
                             allData[rowIndex][colIndex] = td.textContent;
                             saveData();
@@ -68,15 +73,21 @@
                 const actionTd = document.createElement('td');
                 const delBtn = document.createElement('button');
                 delBtn.textContent = "削除";
-                delBtn.onclick = () => { if (confirm("削除しますか？")) { allData.splice(rowIndex, 1); saveAndRender(); } };
+                delBtn.onclick = () => {
+                    if(confirm("この行を削除しますか？")){
+                        allData.splice(rowIndex, 1);
+                        saveAndRender();
+                    }
+                };
                 actionTd.appendChild(delBtn);
                 tr.appendChild(actionTd);
                 tbody.appendChild(tr);
             });
         }
 
+        // --- 2. 保存機能 ---
         function saveData() {
-            localStorage.setItem('shared_csv_data', JSON.stringify(allData));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allData));
         }
 
         function saveAndRender() {
@@ -84,23 +95,70 @@
             renderTable();
         }
 
-        document.getElementById('addRowBtn').onclick = () => { allData.push(Array(9).fill("")); saveAndRender(); };
+        // --- 3. CSV読み込み処理 ---
+        function handleFile(replaceMode) {
+            const fileInput = document.getElementById('csvFileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert("ファイルを選択してください");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                // 行分割（空行除外）
+                const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim() !== "");
+                
+                // 1行目はヘッダーとして飛ばし、2行目以降を解析
+                const newRows = lines.slice(1).map(line => {
+                    // カンマ区切り（簡易対応：引用符の除去）
+                    return line.split(",").map(cell => cell.replace(/^"(.*)"$/, '$1'));
+                });
+
+                if (replaceMode) {
+                    allData = newRows;
+                } else {
+                    allData = allData.concat(newRows);
+                }
+                
+                saveAndRender();
+                fileInput.value = ""; // 選択リセット
+                alert("CSVを読み込みました");
+            };
+            reader.readAsText(file);
+        }
+
+        // --- 4. ボタンイベント設定 ---
+        document.getElementById('addRowBtn').onclick = () => {
+            allData.push(Array(9).fill(""));
+            saveAndRender();
+        };
+
+        document.getElementById('replaceCsvBtn').onclick = () => handleFile(true);
+        document.getElementById('appendCsvBtn').onclick = () => handleFile(false);
 
         document.getElementById('downloadBtn').onclick = () => {
             const headers = ["名称", "種類", "識別番号", "数値1", "数値2", "数値3", "個数", "備考", "データシート"];
             let csvContent = "\uFEFF" + headers.join(",") + "\r\n"; // UTF-8 BOM
-            allData.forEach(row => { csvContent += row.map(c => `"${c}"`).join(",") + "\r\n"; });
+            allData.forEach(row => {
+                csvContent += row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",") + "\r\n";
+            });
             const blob = new Blob([csvContent], { type: "text/csv" });
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
-            a.download = "data.csv";
+            a.download = "exported_data.csv";
             a.click();
         };
 
         document.getElementById('resetAllBtn').onclick = () => {
-            if (confirm("全てのデータを消去しますまか？")) { allData = [Array(9).fill("")]; saveAndRender(); }
+            if(confirm("全てのデータを消去しますか？")){
+                allData = [Array(9).fill("")];
+                saveAndRender();
+            }
         };
 
+        // 初回起動
         renderTable();
     </script>
 </body>
